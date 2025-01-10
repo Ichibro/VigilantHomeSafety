@@ -40,29 +40,27 @@ class MainActivity : ComponentActivity() {
 
 @Composable
 fun MainContent(modifier: Modifier = Modifier) {
-    // Define state variables to hold temperature and humidity data
     var temperature by remember { mutableStateOf("No Data") }
     var humidity by remember { mutableStateOf("No Data") }
+    var smoke by remember { mutableStateOf("No Data") }
     val coroutineScope = rememberCoroutineScope()
 
     Column(
         modifier = modifier
             .fillMaxSize()
-            .padding(16.dp), // Add padding around the whole layout
+            .padding(16.dp),
         verticalArrangement = Arrangement.Center,
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        // App title text
         Text(
             text = "Vigilant Home Safety",
             fontSize = 28.sp,
             fontWeight = FontWeight.Bold,
-            color = Color(0xFF6200EA), // Purple color
-            modifier = Modifier.padding(bottom = 24.dp), // Space below the title
+            color = Color(0xFF6200EA),
+            modifier = Modifier.padding(bottom = 24.dp),
             textAlign = TextAlign.Center
         )
 
-        // Button to fetch data
         Button(
             onClick = {
                 coroutineScope.launch {
@@ -70,42 +68,32 @@ fun MainContent(modifier: Modifier = Modifier) {
                     data?.let {
                         temperature = "Temperature: ${it.first}°C"
                         humidity = "Humidity: ${it.second}%"
+                        smoke = "Smoke: ${it.third} ppm"
                     }
                 }
             },
-            shape = RoundedCornerShape(50), // Rounded corners for the button
+            shape = RoundedCornerShape(50),
             modifier = Modifier
                 .padding(16.dp)
-                .width(200.dp) // Fixed button width for consistency
+                .width(200.dp)
         ) {
             Text(text = "Fetch Data", fontSize = 18.sp)
         }
 
-        // Display temperature and humidity data
         Spacer(modifier = Modifier.height(20.dp))
-        Text(
-            text = temperature,
-            fontSize = 22.sp,
-            color = Color.Black,
-            textAlign = TextAlign.Center,
-            modifier = Modifier.padding(8.dp)
-        )
-        Text(
-            text = humidity,
-            fontSize = 22.sp,
-            color = Color.Black,
-            textAlign = TextAlign.Center,
-            modifier = Modifier.padding(8.dp)
-        )
+        Text(text = temperature, fontSize = 22.sp, color = Color.Black, modifier = Modifier.padding(8.dp))
+        Text(text = humidity, fontSize = 22.sp, color = Color.Black, modifier = Modifier.padding(8.dp))
+        Text(text = smoke, fontSize = 22.sp, color = Color.Black, modifier = Modifier.padding(8.dp))
     }
 }
 
+
+
 // Function to fetch data from the Flask server
-suspend fun fetchDataFromServer(): Pair<Double, Double>? {
+suspend fun fetchDataFromServer(): Triple<Double, Double, Double>? {
     return withContext(Dispatchers.IO) {
         try {
-            // Replace with your Flask server's IP address
-            val urlString = "http://192.168.1.208:5000/data"
+            val urlString = "https://cced-2601-589-498d-ae30-00-bd64.ngrok-free.app/data" // Use your ngrok link
             val url = URL(urlString)
             val urlConnection = url.openConnection() as HttpURLConnection
             try {
@@ -113,13 +101,27 @@ suspend fun fetchDataFromServer(): Pair<Double, Double>? {
                 val inputStream = urlConnection.inputStream
                 val result = inputStream.bufferedReader().use { it.readText() }
 
-                // Parse the JSON data
+                // Parse the JSON response
                 val jsonObject = JSONObject(result)
-                val temperature = jsonObject.getDouble("temperature")
-                val humidity = jsonObject.getDouble("humidity")
+                val dhtData = jsonObject.getString("dht_data") // Example: "Temperature: 75.20 F, Humidity: 39.00 %"
+                val smokeData = jsonObject.getString("smoke_data") // Example: "Smoke: 0.00 ppm"
 
-                // Return temperature and humidity as a Pair
-                Pair(temperature, humidity)
+                // Extract temperature and humidity from dht_data
+                val temperatureRegex = Regex("Temperature: ([0-9.]+) F")
+                val humidityRegex = Regex("Humidity: ([0-9.]+) %")
+                val temperatureMatch = temperatureRegex.find(dhtData)
+                val humidityMatch = humidityRegex.find(dhtData)
+
+                val temperature = temperatureMatch?.groupValues?.get(1)?.toDoubleOrNull() ?: 0.0
+                val humidity = humidityMatch?.groupValues?.get(1)?.toDoubleOrNull() ?: 0.0
+
+                // Extract smoke value from smoke_data
+                val smokeRegex = Regex("Smoke: ([0-9.]+) ppm")
+                val smokeMatch = smokeRegex.find(smokeData)
+                val smoke = smokeMatch?.groupValues?.get(1)?.toDoubleOrNull() ?: 0.0
+
+                // Return the extracted values as a Triple
+                Triple(temperature, humidity, smoke)
             } finally {
                 urlConnection.disconnect()
             }
@@ -129,6 +131,10 @@ suspend fun fetchDataFromServer(): Pair<Double, Double>? {
         }
     }
 }
+
+
+
+
 
 @Preview(showBackground = true)
 @Composable

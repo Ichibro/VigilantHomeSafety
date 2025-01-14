@@ -6,9 +6,9 @@ from umqtt.simple import MQTTClient
 import dht
 
 # Wi-Fi and MQTT configurations
-WIFI_SSID = 'DevAP'
-WIFI_PASSWORD = 'Maisuria@0119'
-MQTT_BROKER = '10.0.0.244'
+WIFI_SSID = 'Wifi Name here'
+WIFI_PASSWORD = 'Wifi Password Here'
+MQTT_BROKER = 'PI4 IP Here'
 MQTT_CLIENT_ID = b'pico_client'
 MQTT_TOPIC_SMOKE = b'sensor/smoke'
 MQTT_TOPIC_DHT = b'sensor/dht22'

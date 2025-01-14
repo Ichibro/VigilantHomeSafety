@@ -1,0 +1,71 @@
+import main
+import time
+from machine import Pin, ADC
+import network
+from umqtt.simple import MQTTClient
+import dht
+
+# Wi-Fi and MQTT configurations
+WIFI_SSID = 'DevAP'
+WIFI_PASSWORD = 'Maisuria@0119'
+MQTT_BROKER = '10.0.0.244'
+MQTT_CLIENT_ID = b'pico_client'
+MQTT_TOPIC_SMOKE = b'sensor/smoke'
+MQTT_TOPIC_DHT = b'sensor/dht22'
+
+# Sensor setup
+mq2_AO = ADC(26)
+dht_sensor = dht.DHT11(Pin(15))
+
+# Constants
+V_REF = 3.3
+R_LOAD = 10
+R_ZERO = 9.8
+SMOKE_SLOPE = -0.47
+SMOKE_INTERCEPT = 2.3
+
+# Connect to Wi-Fi
+def connect_wifi():
+    wlan = network.WLAN(network.STA_IF)
+    wlan.active(True)
+    wlan.connect(WIFI_SSID, WIFI_PASSWORD)
+    while not wlan.isconnected():
+        time.sleep(1)
+    print("Wi-Fi connected")
+
+# Connect to MQTT broker
+def connect_mqtt():
+    client = MQTTClient(MQTT_CLIENT_ID, MQTT_BROKER)
+    client.connect()
+    print("MQTT connected")
+    return client
+
+# Get sensor data
+def get_smoke_ppm():
+    voltage = mq2_AO.read_u16() * V_REF / 65535
+    rs = R_LOAD * (V_REF - voltage) / voltage
+    return 10 ** ((rs / R_ZERO - SMOKE_INTERCEPT) / SMOKE_SLOPE)
+
+def get_dht_data():
+    dht_sensor.measure()
+    temp_c = dht_sensor.temperature()
+    humidity = dht_sensor.humidity()
+    return temp_c * 1.8 + 32, humidity
+
+# Main loop
+def main():
+    connect_wifi()
+    client = connect_mqtt()
+
+    while True:
+        smoke_ppm = get_smoke_ppm()
+        client.publish(MQTT_TOPIC_SMOKE, b'Smoke: %.2f ppm' % smoke_ppm)
+
+        temp_f, humidity = get_dht_data()
+        client.publish(MQTT_TOPIC_DHT, f' {temp_f:.2f} F, {humidity:.2f}%'.encode())
+
+        time.sleep(2)
+
+if __name__ == "__main__":
+    main()
+

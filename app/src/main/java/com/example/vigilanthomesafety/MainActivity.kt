@@ -97,9 +97,9 @@ fun MainContent(modifier: Modifier = Modifier) {
                 coroutineScope.launch {
                     val data = fetchDataFromServer()
                     data?.let {
-                        temperature = "${it.first}°C"
+                        temperature = "${String.format("%.1f", it.first)}°C" // Convert to 1 decimal
                         gasLevel = if (it.second < 50) "Safe" else "High"
-                        waterLevel = "Normal" // Replace with actual water level logic
+                        waterLevel = "Normal" // Placeholder logic
                         smoke = if (it.third < 10) "No" else "Yes"
                     }
                 }
@@ -137,8 +137,6 @@ fun MetricRow(label: String, value: String) {
     }
 }
 
-
-
 // Function to fetch data from the Flask server
 suspend fun fetchDataFromServer(): Triple<Double, Double, Double>? {
     return withContext(Dispatchers.IO) {
@@ -158,22 +156,19 @@ suspend fun fetchDataFromServer(): Triple<Double, Double, Double>? {
                 val dhtData = jsonObject.getString("dht_data") // Example: "73.40 F, 45.00%"
                 val smokeData = jsonObject.getString("smoke_data") // Example: "Smoke: 0.00 ppm"
 
-                // Extract temperature and humidity from `dht_data`
+                // Extract temperature and convert to Celsius
                 val temperatureRegex = Regex("([0-9.]+) F")
-                val humidityRegex = Regex("([0-9.]+)%")
                 val temperatureMatch = temperatureRegex.find(dhtData)
-                val humidityMatch = humidityRegex.find(dhtData)
-
-                val temperature = temperatureMatch?.groupValues?.get(1)?.toDoubleOrNull() ?: 0.0
-                val humidity = humidityMatch?.groupValues?.get(1)?.toDoubleOrNull() ?: 0.0
+                val temperatureF = temperatureMatch?.groupValues?.get(1)?.toDoubleOrNull() ?: 0.0
+                val temperatureC = (temperatureF - 32) * 5 / 9
 
                 // Extract smoke value from `smoke_data`
-                val smokeRegex = Regex("Smoke: ([0-9.]+) ppm")
+                val smokeRegex = Regex("([0-9.]+) ppm")
                 val smokeMatch = smokeRegex.find(smokeData)
                 val smoke = smokeMatch?.groupValues?.get(1)?.toDoubleOrNull() ?: 0.0
 
                 // Return the extracted values
-                Triple(temperature, humidity, smoke)
+                Triple(temperatureC, 0.0, smoke) // Humidity placeholder
             } finally {
                 urlConnection.disconnect()
             }
@@ -183,7 +178,6 @@ suspend fun fetchDataFromServer(): Triple<Double, Double, Double>? {
         }
     }
 }
-
 
 @Preview(showBackground = true)
 @Composable

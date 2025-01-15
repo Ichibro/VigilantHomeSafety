@@ -105,6 +105,9 @@ fun MainContent(modifier: Modifier = Modifier) {
                 }
             },
             shape = RoundedCornerShape(50),
+            colors = ButtonDefaults.buttonColors(
+                containerColor = Color.Blue // Replace with your desired background color
+            ),
             modifier = Modifier.padding(top = 16.dp)
         ) {
             Text(text = "Refresh Data", fontSize = 18.sp)

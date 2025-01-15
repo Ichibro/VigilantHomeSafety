@@ -106,7 +106,7 @@ fun MainContent(modifier: Modifier = Modifier) {
             },
             shape = RoundedCornerShape(50),
             colors = ButtonDefaults.buttonColors(
-                containerColor = Color.Blue // Replace with your desired background color
+                containerColor = Color.Blue
             ),
             modifier = Modifier.padding(top = 16.dp)
         ) {

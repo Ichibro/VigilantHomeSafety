@@ -1,12 +1,14 @@
 package com.example.vigilanthomesafety
 
 import android.os.Bundle
-import android.webkit.WebView
-import android.webkit.WebViewClient
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
+import android.webkit.WebView
+import android.webkit.WebViewClient
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -32,9 +34,7 @@ class MainActivity : ComponentActivity() {
         setContent {
             VigilantHomeSafetyTheme {
                 Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
-                    MainContent(
-                        modifier = Modifier.padding(innerPadding)
-                    )
+                    MainContent(modifier = Modifier.padding(innerPadding))
                 }
             }
         }
@@ -43,108 +43,101 @@ class MainActivity : ComponentActivity() {
 
 @Composable
 fun MainContent(modifier: Modifier = Modifier) {
-    // State to track which screen to show
-    var showVideoStream by remember { mutableStateOf(false) }
-
-    if (showVideoStream) {
-        // Show the video stream screen
-        VideoStreamScreen(
-            url = "100.68.176.2:8081/?action=stream", // Replace with your Ngrok URL
-            onBackPressed = { showVideoStream = false } // Navigate back to main screen
-        )
-    } else {
-        // Show the main content screen
-        MainScreen(onViewVideoStream = { showVideoStream = true })
-    }
-}
-
-@Composable
-fun MainScreen(modifier: Modifier = Modifier, onViewVideoStream: () -> Unit) {
     var temperature by remember { mutableStateOf("No Data") }
-    var humidity by remember { mutableStateOf("No Data") }
+    var gasLevel by remember { mutableStateOf("No Data") }
+    var waterLevel by remember { mutableStateOf("No Data") }
     var smoke by remember { mutableStateOf("No Data") }
     val coroutineScope = rememberCoroutineScope()
 
     Column(
         modifier = modifier
             .fillMaxSize()
-            .padding(16.dp),
-        verticalArrangement = Arrangement.Center,
+            .padding(16.dp)
+            .verticalScroll(rememberScrollState()),
+        verticalArrangement = Arrangement.Top,
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
+        // Live Camera Feed Placeholder
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(200.dp)
+                .padding(bottom = 16.dp),
+            contentAlignment = Alignment.Center
+        ) {
+            Surface(
+                color = Color.Black,
+                shape = RoundedCornerShape(8.dp),
+                modifier = Modifier.fillMaxSize()
+            ) {
+                Text(
+                    text = "Camera Feed",
+                    color = Color.White,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.align(Alignment.Center)
+                )
+            }
+        }
+
+        // Sensor Metrics Section
         Text(
-            text = "Vigilant Home Safety",
-            fontSize = 28.sp,
+            text = "Sensor Metrics",
+            fontSize = 20.sp,
             fontWeight = FontWeight.Bold,
-            color = Color(0xFF6200EA),
-            modifier = Modifier.padding(bottom = 24.dp),
-            textAlign = TextAlign.Center
+            color = Color.Black,
+            modifier = Modifier.padding(bottom = 8.dp)
         )
 
+        // Metrics Rows
+        MetricRow(label = "Temperature:", value = temperature)
+        MetricRow(label = "Gas Levels:", value = gasLevel)
+        MetricRow(label = "Water Level:", value = waterLevel)
+        MetricRow(label = "Smoke Detected:", value = smoke)
+
+        // Refresh Data Button
         Button(
             onClick = {
                 coroutineScope.launch {
                     val data = fetchDataFromServer()
                     data?.let {
-                        temperature = "Temperature: ${it.first}°C"
-                        humidity = "Humidity: ${it.second}%"
-                        smoke = "Smoke: ${it.third} ppm"
+                        temperature = "${it.first}°C"
+                        gasLevel = if (it.second < 50) "Safe" else "High"
+                        waterLevel = "Normal" // Replace with actual water level logic
+                        smoke = if (it.third < 10) "No" else "Yes"
                     }
                 }
             },
             shape = RoundedCornerShape(50),
-            modifier = Modifier
-                .padding(16.dp)
-                .width(200.dp)
+            modifier = Modifier.padding(top = 16.dp)
         ) {
-            Text(text = "Fetch Data", fontSize = 18.sp)
-        }
-
-        Spacer(modifier = Modifier.height(20.dp))
-        Text(text = temperature, fontSize = 22.sp, color = Color.Black, modifier = Modifier.padding(8.dp))
-        Text(text = humidity, fontSize = 22.sp, color = Color.Black, modifier = Modifier.padding(8.dp))
-        Text(text = smoke, fontSize = 22.sp, color = Color.Black, modifier = Modifier.padding(8.dp))
-
-        Spacer(modifier = Modifier.height(40.dp))
-        Button(
-            onClick = onViewVideoStream, // Navigate to the video stream screen
-            shape = RoundedCornerShape(50),
-            modifier = Modifier
-                .padding(16.dp)
-                .width(200.dp)
-        ) {
-            Text(text = "View Video Stream", fontSize = 18.sp)
+            Text(text = "Refresh Data", fontSize = 18.sp)
         }
     }
 }
 
 @Composable
-fun VideoStreamScreen(url: String, onBackPressed: () -> Unit) {
-    Column(
+fun MetricRow(label: String, value: String) {
+    Row(
         modifier = Modifier
-            .fillMaxSize()
-            .padding(16.dp),
-        verticalArrangement = Arrangement.Top,
-        horizontalAlignment = Alignment.CenterHorizontally
+            .fillMaxWidth()
+            .padding(vertical = 8.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
     ) {
-        Button(
-            onClick = onBackPressed,
-            modifier = Modifier
-                .padding(8.dp)
-                .align(Alignment.Start)
-        ) {
-            Text("Back")
-        }
-
-        AndroidView(factory = { context ->
-            WebView(context).apply {
-                webViewClient = WebViewClient()
-                settings.javaScriptEnabled = true // Enable JavaScript for video streams
-                loadUrl(url)
-            }
-        }, modifier = Modifier.fillMaxSize())
+        Text(
+            text = label,
+            fontSize = 16.sp,
+            color = Color.Black
+        )
+        Text(
+            text = value,
+            fontSize = 16.sp,
+            color = Color(0xFF4CAF50) // Green for positive states
+        )
     }
 }
+
+
 
 // Function to fetch data from the Flask server
 suspend fun fetchDataFromServer(): Triple<Double, Double, Double>? {

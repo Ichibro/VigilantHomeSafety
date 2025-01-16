@@ -25,8 +25,6 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.text.style.TextAlign
 
-
-
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -45,11 +43,9 @@ fun MainContent(modifier: Modifier = Modifier) {
     var temperature by remember { mutableStateOf("No Data") }
     var humidity by remember { mutableStateOf("No Data") }
     var gasLevel by remember { mutableStateOf("No Data") }
-    var waterLevel by remember { mutableStateOf("No Data") }
-    var smoke by remember { mutableStateOf("No Data") }
+    var waterStatus by remember { mutableStateOf("No Data") }
+    var smokeLevel by remember { mutableStateOf("No Data") }
     val coroutineScope = rememberCoroutineScope()
-
-
 
     Column(
         modifier = modifier
@@ -96,8 +92,16 @@ fun MainContent(modifier: Modifier = Modifier) {
             value = gasLevel,
             valueColor = if (gasLevel == "High") Color.Red else Color(0xFF4CAF50)
         )
-        MetricRow(label = "Water Level:", value = waterLevel)
-        MetricRow(label = "Smoke Detected:", value = smoke)
+        MetricRow(
+            label = "Water Status:",
+            value = waterStatus,
+            valueColor = if (waterStatus == "Flood") Color.Red else Color(0xFF4CAF50)
+        )
+        MetricRow(
+            label = "Smoke Level:",
+            value = smokeLevel,
+            valueColor = if (smokeLevel == "High") Color.Red else Color(0xFF4CAF50)
+        )
 
         // Refresh Data Button
         Button(
@@ -108,8 +112,8 @@ fun MainContent(modifier: Modifier = Modifier) {
                         temperature = "${String.format(Locale.getDefault(), "%.1f", it.first)}°F"
                         humidity = "${String.format(Locale.getDefault(), "%.1f", it.second)}%"
                         gasLevel = if (it.second > 30) "High" else "Safe"
-                        waterLevel = "Normal"
-                        smoke = if (it.third < 10) "No" else "Yes"
+                        waterStatus = if (it.third > 20) "Flood" else "Dry"
+                        smokeLevel = if (it.fourth > 10) "High" else "Low" // Set smoke status
                     }
                 }
             },
@@ -141,7 +145,7 @@ fun MetricRow(label: String, value: String, valueColor: Color = Color.Black) {
     }
 }
 
-suspend fun fetchDataFromServer(): Triple<Double, Double, Double>? {
+suspend fun fetchDataFromServer(): Quadruple<Double, Double, Double, Double>? {
     return withContext(Dispatchers.IO) {
         try {
             val urlString = "https://vigilanths.pagekite.me/data"
@@ -155,6 +159,11 @@ suspend fun fetchDataFromServer(): Triple<Double, Double, Double>? {
                 val jsonObject = JSONObject(result)
                 val dhtData = jsonObject.getString("dht_data")
                 val smokeData = jsonObject.getString("smoke_data")
+                val waterLevel = jsonObject.getDouble("water_level")
+
+                val smokeRegex = Regex("([0-9.]+) ppm")
+                val smokeMatch = smokeRegex.find(smokeData)
+                val smokeValue = smokeMatch?.groupValues?.get(1)?.toDoubleOrNull() ?: 0.0
 
                 val temperatureRegex = Regex("([0-9.]+) F")
                 val temperatureMatch = temperatureRegex.find(dhtData)
@@ -165,11 +174,7 @@ suspend fun fetchDataFromServer(): Triple<Double, Double, Double>? {
                 val humidityMatch = humidityRegex.find(dhtData)
                 val humidity = humidityMatch?.groupValues?.get(1)?.toDoubleOrNull() ?: 0.0
 
-                val smokeRegex = Regex("([0-9.]+) ppm")
-                val smokeMatch = smokeRegex.find(smokeData)
-                val smoke = smokeMatch?.groupValues?.get(1)?.toDoubleOrNull() ?: 0.0
-
-                Triple(temperatureC, humidity, smoke)
+                Quadruple(temperatureC, humidity, waterLevel, smokeValue)
             } finally {
                 urlConnection.disconnect()
             }
@@ -179,6 +184,14 @@ suspend fun fetchDataFromServer(): Triple<Double, Double, Double>? {
         }
     }
 }
+
+// Utility class
+data class Quadruple<A, B, C, D>(
+    val first: A,
+    val second: B,
+    val third: C,
+    val fourth: D
+)
 
 @Preview(showBackground = true)
 @Composable

@@ -96,7 +96,11 @@ fun MainContent(modifier: Modifier = Modifier) {
             value = gasLevel,
             valueColor = if (gasLevel == "High") Color.Red else Color(0xFF4CAF50)
         )
-        MetricRow(label = "Water Level:", value = waterLevel)
+        MetricRow(
+            label = "Water Level:",
+            value = waterLevel,
+            valueColor = if (waterLevel == "High") Color.Red else Color(0xFF4CAF50)
+        )
         MetricRow(label = "Smoke Detected:", value = smoke)
 
         // Refresh Data Button
@@ -105,14 +109,18 @@ fun MainContent(modifier: Modifier = Modifier) {
                 coroutineScope.launch {
                     val data = fetchDataFromServer()
                     data?.let {
-                        temperature = "${String.format(Locale.getDefault(), "%.1f", it.first)}°F"
+                        temperature = "${String.format(Locale.getDefault(), "%.1f", it.first)}°C"
                         humidity = "${String.format(Locale.getDefault(), "%.1f", it.second)}%"
-                        gasLevel = if (it.second > 30) "High" else "Safe"
-                        waterLevel = "Normal"
+                       // gasLevel = if (it.second > 30) "High" else "Safe"
+                       // waterLevel = "Normal"
                         smoke = if (it.third < 10) "No" else "Yes"
                     }
                 }
             },
+        shape = RoundedCornerShape(50),
+        colors = ButtonDefaults.buttonColors(
+        containerColor = Color.Blue // Replace with your desired background color
+    ),
             modifier = Modifier.padding(top = 16.dp)
         ) {
             Text(text = "Refresh Data", fontSize = 18.sp)

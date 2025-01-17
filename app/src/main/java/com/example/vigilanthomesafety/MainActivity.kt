@@ -1,4 +1,5 @@
 package com.example.vigilanthomesafety
+
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -11,7 +12,11 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.tooling.preview.Preview
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -19,10 +24,6 @@ import org.json.JSONObject
 import java.net.HttpURLConnection
 import java.net.URL
 import java.util.Locale
-import androidx.compose.ui.unit.sp
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.tooling.preview.Preview
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -74,6 +75,7 @@ fun MainContent(modifier: Modifier = Modifier) {
                 )
             }
         }
+
         // Sensor Metrics Section
         Text(
             text = "Sensor Metrics",
@@ -133,7 +135,6 @@ fun MainContent(modifier: Modifier = Modifier) {
     }
 }
 
-
 @Composable
 fun MetricRow(label: String, value: String, valueColor: Color = Color.Black) {
     Row(
@@ -169,17 +170,13 @@ suspend fun fetchDataFromServer(): SensorData? {
                 val jsonObject = JSONObject(result)
                 val dhtData = jsonObject.optString("dht_data", "")
                 val smokeData = jsonObject.optString("smoke_data", "")
-                val coDataString = jsonObject.optString("co_data", "0.00 ppm") // CO data
+                val coDataString = jsonObject.optString("co_data", "0.00 ppm")
                 val waterDataString = jsonObject.optString("water_data", "0.00%")
                 val waterLevel = waterDataString.replace("%", "").toDoubleOrNull() ?: 0.0
 
-                // Extract CO level from `co_data`
                 val coRegex = Regex("([0-9.]+) ppm")
                 val coMatch = coRegex.find(coDataString)
                 val coValue = coMatch?.groupValues?.get(1)?.toDoubleOrNull() ?: 0.0
-
-                println("Raw CO Data: $coDataString") // Debug log
-                println("Parsed CO Level: $coValue")  // Debug log
 
                 val smokeRegex = Regex("([0-9.]+) ppm")
                 val smokeMatch = smokeRegex.find(smokeData)
@@ -205,8 +202,6 @@ suspend fun fetchDataFromServer(): SensorData? {
     }
 }
 
-
-
 data class SensorData(
     val temperature: Double,
     val humidity: Double,
@@ -214,7 +209,6 @@ data class SensorData(
     val smokeLevel: Double,
     val coLevel: Double
 )
-
 
 @Preview(showBackground = true)
 @Composable

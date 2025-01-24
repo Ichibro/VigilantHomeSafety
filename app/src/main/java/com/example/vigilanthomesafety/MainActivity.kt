@@ -62,7 +62,7 @@ fun MainContent(modifier: Modifier = Modifier) {
                     smokeLevel = "Error"
                 }
             )
-            delay(15000)
+            delay(1000)
         }
     }
 

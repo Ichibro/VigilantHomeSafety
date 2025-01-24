@@ -17,9 +17,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.tooling.preview.Preview
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
+import kotlinx.coroutines.*
 import org.json.JSONObject
 import java.net.HttpURLConnection
 import java.net.URL
@@ -42,10 +40,31 @@ class MainActivity : ComponentActivity() {
 fun MainContent(modifier: Modifier = Modifier) {
     var temperature by remember { mutableStateOf("No Data") }
     var humidity by remember { mutableStateOf("No Data") }
-    var gasLevel by remember { mutableStateOf("No Data") } // Represents CO sensor data
+    var gasLevel by remember { mutableStateOf("No Data") }
     var waterStatus by remember { mutableStateOf("No Data") }
     var smokeLevel by remember { mutableStateOf("No Data") }
-    val coroutineScope = rememberCoroutineScope()
+
+    LaunchedEffect(Unit) {
+        while (true) {
+            fetchSensorData(
+                onDataReceived = { data ->
+                    temperature = "${String.format(Locale.getDefault(), "%.1f", data.temperature)}°C"
+                    humidity = "${String.format(Locale.getDefault(), "%.1f", data.humidity)}%"
+                    gasLevel = if (data.coLevel > 50) "High" else "Safe"
+                    waterStatus = if (data.waterLevel > 20) "Flood" else "Dry"
+                    smokeLevel = if (data.smokeLevel > 10) "High" else "Low"
+                },
+                onError = {
+                    temperature = "Error"
+                    humidity = "Error"
+                    gasLevel = "Error"
+                    waterStatus = "Error"
+                    smokeLevel = "Error"
+                }
+            )
+            delay(15000)
+        }
+    }
 
     Column(
         modifier = modifier
@@ -54,7 +73,6 @@ fun MainContent(modifier: Modifier = Modifier) {
             .verticalScroll(rememberScrollState()),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        // Live Camera Feed Placeholder
         Box(
             modifier = Modifier
                 .fillMaxWidth()
@@ -76,7 +94,6 @@ fun MainContent(modifier: Modifier = Modifier) {
             }
         }
 
-        // Sensor Metrics Section
         Text(
             text = "Sensor Metrics",
             fontSize = 20.sp,
@@ -85,7 +102,6 @@ fun MainContent(modifier: Modifier = Modifier) {
             modifier = Modifier.padding(bottom = 8.dp)
         )
 
-        // Metrics Rows
         MetricRow(label = "Temperature:", value = temperature)
         MetricRow(label = "Humidity:", value = humidity)
         MetricRow(
@@ -103,35 +119,6 @@ fun MainContent(modifier: Modifier = Modifier) {
             value = smokeLevel,
             valueColor = if (smokeLevel == "High") Color.Red else Color(0xFF4CAF50)
         )
-
-        // Refresh Data Button
-        Button(
-            onClick = {
-                coroutineScope.launch {
-                    val data = fetchDataFromServer()
-                    if (data != null) {
-                        temperature = "${String.format(Locale.getDefault(), "%.1f", data.temperature)}°C"
-                        humidity = "${String.format(Locale.getDefault(), "%.1f", data.humidity)}%"
-                        gasLevel = if (data.coLevel > 50) "High" else "Safe" // Threshold for CO
-                        waterStatus = if (data.waterLevel > 20) "Flood" else "Dry"
-                        smokeLevel = if (data.smokeLevel > 10) "High" else "Low"
-                    } else {
-                        temperature = "Error"
-                        humidity = "Error"
-                        gasLevel = "Error"
-                        waterStatus = "Error"
-                        smokeLevel = "Error"
-                    }
-                }
-            },
-            shape = RoundedCornerShape(50),
-            colors = ButtonDefaults.buttonColors(
-                containerColor = Color.Blue
-            ),
-            modifier = Modifier.padding(top = 16.dp)
-        ) {
-            Text(text = "Refresh Data", fontSize = 18.sp)
-        }
     }
 }
 
@@ -153,6 +140,19 @@ fun MetricRow(label: String, value: String, valueColor: Color = Color.Black) {
             fontSize = 16.sp,
             color = valueColor
         )
+    }
+}
+
+fun fetchSensorData(onDataReceived: (SensorData) -> Unit, onError: () -> Unit) {
+    CoroutineScope(Dispatchers.IO).launch {
+        val data = fetchDataFromServer()
+        withContext(Dispatchers.Main) {
+            if (data != null) {
+                onDataReceived(data)
+            } else {
+                onError()
+            }
+        }
     }
 }
 

@@ -1,8 +1,11 @@
 package com.example.vigilanthomesafety
 
+import android.net.Uri
 import android.os.Bundle
+import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.annotation.OptIn
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -12,11 +15,18 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
+
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.foundation.shape.RoundedCornerShape
+
 import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.viewinterop.AndroidView
+import androidx.media3.common.MediaItem
+import androidx.media3.common.MimeTypes
+import androidx.media3.common.util.UnstableApi
+import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.exoplayer.rtsp.RtspMediaSource
+import androidx.media3.ui.PlayerView
 import kotlinx.coroutines.*
 import org.json.JSONObject
 import java.net.HttpURLConnection
@@ -43,6 +53,7 @@ fun MainContent(modifier: Modifier = Modifier) {
     var gasLevel by remember { mutableStateOf("No Data") }
     var waterStatus by remember { mutableStateOf("No Data") }
     var smokeLevel by remember { mutableStateOf("No Data") }
+    var motionStatus by remember { mutableStateOf("No Motion") }
 
     LaunchedEffect(Unit) {
         while (true) {
@@ -53,6 +64,7 @@ fun MainContent(modifier: Modifier = Modifier) {
                     gasLevel = if (data.coLevel > 50) "High" else "Safe"
                     waterStatus = if (data.waterLevel > 20) "Flood" else "Dry"
                     smokeLevel = if (data.smokeLevel > 10) "High" else "Low"
+                    motionStatus = if (data.motion) "MOTION DETECTED!" else "No Motion Detected!"
                 },
                 onError = {
                     temperature = "Error"
@@ -60,6 +72,7 @@ fun MainContent(modifier: Modifier = Modifier) {
                     gasLevel = "Error"
                     waterStatus = "Error"
                     smokeLevel = "Error"
+                    motionStatus = "Error"
                 }
             )
             delay(1000)
@@ -73,33 +86,23 @@ fun MainContent(modifier: Modifier = Modifier) {
             .verticalScroll(rememberScrollState()),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(200.dp)
-                .padding(bottom = 16.dp),
-            contentAlignment = Alignment.Center
-        ) {
-            Surface(
-                color = Color.Black,
-                shape = RoundedCornerShape(8.dp),
-                modifier = Modifier.fillMaxSize()
-            ) {
-                Text(
-                    text = "Camera Feed",
-                    color = Color.White,
-                    textAlign = TextAlign.Center,
-                    modifier = Modifier.align(Alignment.Center)
-                )
-            }
-        }
+        Text(
+            text = "Live Camera Feed",
+            fontSize = 20.sp,
+            fontWeight = FontWeight.Bold,
+            color = Color.Black,
+            modifier = Modifier.padding(bottom = 8.dp)
+        )
+
+        // 🎥 Updated Video Player with RTSP stream
+        VideoPlayer(streamUrl = "rtsp://100.68.176.2:8554/cam")
 
         Text(
             text = "Sensor Metrics",
             fontSize = 20.sp,
             fontWeight = FontWeight.Bold,
             color = Color.Black,
-            modifier = Modifier.padding(bottom = 8.dp)
+            modifier = Modifier.padding(vertical = 8.dp)
         )
 
         MetricRow(label = "Temperature:", value = temperature)
@@ -119,7 +122,57 @@ fun MainContent(modifier: Modifier = Modifier) {
             value = smokeLevel,
             valueColor = if (smokeLevel == "High") Color.Red else Color(0xFF4CAF50)
         )
+        MetricRow(
+            label = "Motion Detection:",
+            value = motionStatus,
+            valueColor = if (motionStatus == "MOTION DETECTED!") Color.Red else Color(0xFF4CAF50)
+        )
     }
+}
+
+@OptIn(UnstableApi::class)
+@Composable
+fun VideoPlayer(streamUrl: String) {
+    val context = androidx.compose.ui.platform.LocalContext.current
+
+    val player = remember {
+        ExoPlayer.Builder(context)
+            .setMediaSourceFactory(RtspMediaSource.Factory()) // Ensure RTSP source factory
+            .build()
+    }
+
+    DisposableEffect(Unit) {
+        Log.d("RTSP_DEBUG", "Setting up ExoPlayer with: $streamUrl")
+
+        val mediaItem = MediaItem.Builder()
+            .setUri(Uri.parse(streamUrl))
+            .setMimeType(MimeTypes.VIDEO_H264) // Ensure H.264 compatibility
+            .build()
+
+        val mediaSource = RtspMediaSource.Factory()
+            .createMediaSource(mediaItem)
+
+        player.setMediaSource(mediaSource)
+        player.prepare()
+        player.play()
+
+        onDispose {
+            Log.d("RTSP_DEBUG", "Releasing ExoPlayer")
+            player.release()
+        }
+    }
+
+    AndroidView(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(200.dp),
+        factory = { ctx ->
+            PlayerView(ctx).apply {
+                this.useController = true
+                this.player = player
+            }
+        }
+    )
 }
 
 @Composable
@@ -172,26 +225,17 @@ suspend fun fetchDataFromServer(): SensorData? {
                 val smokeData = jsonObject.optString("smoke_data", "")
                 val coDataString = jsonObject.optString("co_data", "0.00 ppm")
                 val waterDataString = jsonObject.optString("water_data", "0.00%")
+                val motionData = jsonObject.optString("motion_data", "No Motion Detected").trim()
+
                 val waterLevel = waterDataString.replace("%", "").toDoubleOrNull() ?: 0.0
+                val coValue = coDataString.replace(" ppm", "").toDoubleOrNull() ?: 0.0
+                val smokeValue = smokeData.replace(" ppm", "").toDoubleOrNull() ?: 0.0
+                val temperatureC = dhtData.toDoubleOrNull() ?: 0.0
+                val humidity = dhtData.toDoubleOrNull() ?: 0.0
 
-                val coRegex = Regex("([0-9.]+) ppm")
-                val coMatch = coRegex.find(coDataString)
-                val coValue = coMatch?.groupValues?.get(1)?.toDoubleOrNull() ?: 0.0
+                val motionDetected = motionData.equals("MOTION DETECTED!", ignoreCase = true)
 
-                val smokeRegex = Regex("([0-9.]+) ppm")
-                val smokeMatch = smokeRegex.find(smokeData)
-                val smokeValue = smokeMatch?.groupValues?.get(1)?.toDoubleOrNull() ?: 0.0
-
-                val temperatureRegex = Regex("([0-9.]+) F")
-                val temperatureMatch = temperatureRegex.find(dhtData)
-                val temperatureF = temperatureMatch?.groupValues?.get(1)?.toDoubleOrNull() ?: 0.0
-                val temperatureC = (temperatureF - 32) * 5 / 9
-
-                val humidityRegex = Regex("([0-9.]+)%")
-                val humidityMatch = humidityRegex.find(dhtData)
-                val humidity = humidityMatch?.groupValues?.get(1)?.toDoubleOrNull() ?: 0.0
-
-                SensorData(temperatureC, humidity, waterLevel, smokeValue, coValue)
+                SensorData(temperatureC, humidity, waterLevel, smokeValue, coValue, motionDetected)
             } finally {
                 urlConnection.disconnect()
             }
@@ -207,12 +251,13 @@ data class SensorData(
     val humidity: Double,
     val waterLevel: Double,
     val smokeLevel: Double,
-    val coLevel: Double
+    val coLevel: Double,
+    val motion: Boolean
 )
 
 @Preview(showBackground = true)
 @Composable
-fun GreetingPreview() {
+fun PreviewUI() {
     MaterialTheme {
         MainContent()
     }

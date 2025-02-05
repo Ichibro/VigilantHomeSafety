@@ -227,11 +227,15 @@ suspend fun fetchDataFromServer(): SensorData? {
                 val waterDataString = jsonObject.optString("water_data", "0.00%")
                 val motionData = jsonObject.optString("motion_data", "No Motion Detected").trim()
 
+                // Extract temperature and humidity from "77.00 F, 38.00%" format
+                val dhtParts = dhtData.split(",") // Split by comma
+                val temperatureF = dhtParts.getOrNull(0)?.replace(" F", "")?.trim()?.toDoubleOrNull() ?: 0.0
+                val humidity = dhtParts.getOrNull(1)?.replace("%", "")?.trim()?.toDoubleOrNull() ?: 0.0
+                val temperatureC = (temperatureF - 32) * 5 / 9  // Convert to Celsius
+
                 val waterLevel = waterDataString.replace("%", "").toDoubleOrNull() ?: 0.0
                 val coValue = coDataString.replace(" ppm", "").toDoubleOrNull() ?: 0.0
                 val smokeValue = smokeData.replace(" ppm", "").toDoubleOrNull() ?: 0.0
-                val temperatureC = dhtData.toDoubleOrNull() ?: 0.0
-                val humidity = dhtData.toDoubleOrNull() ?: 0.0
 
                 val motionDetected = motionData.equals("MOTION DETECTED!", ignoreCase = true)
 
@@ -245,6 +249,7 @@ suspend fun fetchDataFromServer(): SensorData? {
         }
     }
 }
+
 
 data class SensorData(
     val temperature: Double,

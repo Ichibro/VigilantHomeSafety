@@ -37,7 +37,9 @@ import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.rtsp.RtspMediaSource
 import androidx.media3.ui.PlayerView
 import kotlinx.coroutines.*
-
+import org.json.JSONObject
+import java.net.HttpURLConnection
+import java.net.URL
 
 private const val CHANNEL_ID = "ALERT_CHANNEL"
 
@@ -107,38 +109,62 @@ fun MainContent(modifier: Modifier = Modifier, isPreview: Boolean = false) {
     var gasLevel by remember { mutableStateOf("No Data") }
     var waterStatus by remember { mutableStateOf("No Data") }
     var smokeLevel by remember { mutableStateOf("No Data") }
-    var motionStatus by remember { mutableStateOf("No Motion") }
 
     if (!isPreview) {
         LaunchedEffect(Unit) {
             while (true) {
-                fetchSensorData(
-                    onDataReceived = { data ->
-                        temperature = "${data.temperature}°C"
-                        humidity = "${data.humidity}%"
-                        gasLevel = if (data.coLevel > 50) "High" else "Safe"
-                        waterStatus = if (data.waterLevel > 20) "Flood" else "Dry"
-                        smokeLevel = if (data.smokeLevel > 10) "High" else "Low"
-                        motionStatus = if (data.motion) "MOTION DETECTED!" else "No Motion Detected!"
+                val data = fetchDataFromServer()
+                if (data != null) {
+                    // Convert Fahrenheit to Celsius for UI display
+                    val tempCelsius = (data.temperature - 32) * 5 / 9
+                    temperature = "${"%.1f".format(tempCelsius)} °C"
+                    humidity = "${data.humidity}%"
+                    gasLevel = if (data.coLevel > 50) "High" else "Safe"
+                    waterStatus = if (data.waterLevel > 20) "Flood" else "Dry"
 
-                        if (data.temperature > 50) sendNotification(context, "High Temperature Alert!", "Temperature is ${data.temperature}°C")
-                        if (data.humidity > 90) sendNotification(context, "High Humidity Alert!", "Humidity is ${data.humidity}%")
-                        if (data.coLevel > 50) sendNotification(context, "CO Gas Alert!", "CO Level is HIGH!")
-                        if (data.waterLevel > 20) sendNotification(context, "Flood Alert!", "Water level is rising!")
-                        if (data.smokeLevel > 10) sendNotification(context, "Smoke Alert!", "High smoke level detected!")
-                    },
-                    onError = {}
-                )
+                    // Check the raw sensor value for smoke, but update the UI with a string
+                    val isSmokeHigh = data.smokeLevel > 10
+                    smokeLevel = if (isSmokeHigh) "High" else "Low"
+
+                    // Example notification thresholds (using raw Fahrenheit data for temperature)
+                    if (data.temperature > 90) {
+                        sendNotification(context, "High Temperature Alert!", "Temperature is ${data.temperature} F")
+                    }
+                    if (data.humidity > 90) {
+                        sendNotification(context, "High Humidity Alert!", "Humidity is ${data.humidity}%")
+                    }
+                    if (data.coLevel > 50) {
+                        sendNotification(context, "CO Gas Alert!", "CO Level is HIGH!")
+                    }
+                    if (data.waterLevel > 20) {
+                        sendNotification(context, "Flood Alert!", "Water level is rising!")
+                    }
+                    if (isSmokeHigh) {
+                        sendNotification(context, "Smoke Alert!", "High smoke level detected!")
+                    }
+                } else {
+                    Log.e("MainContent", "Failed to fetch sensor data")
+                }
                 delay(1000)
             }
         }
     }
 
+
+
     Column(
-        modifier = modifier.fillMaxSize().padding(16.dp).verticalScroll(rememberScrollState()),
+        modifier = modifier
+            .fillMaxSize()
+            .padding(16.dp)
+            .verticalScroll(rememberScrollState()),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        Text(text = "Live Camera Feed", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = Color.Black)
+        Text(
+            text = "Live Camera Feed",
+            fontSize = 20.sp,
+            fontWeight = FontWeight.Bold,
+            color = Color.Black
+        )
         if (!isPreview) {
             VideoPlayer(streamUrl = "rtsp://100.68.176.2:8554/cam")
         } else {
@@ -146,14 +172,18 @@ fun MainContent(modifier: Modifier = Modifier, isPreview: Boolean = false) {
         }
 
         Spacer(modifier = Modifier.height(16.dp))
-        Text(text = "Sensor Metrics", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = Color.Black)
+        Text(
+            text = "Sensor Metrics",
+            fontSize = 20.sp,
+            fontWeight = FontWeight.Bold,
+            color = Color.Black
+        )
 
         MetricRow(label = "Temperature:", value = temperature)
         MetricRow(label = "Humidity:", value = humidity)
         MetricRow(label = "Gas Levels (CO):", value = gasLevel)
         MetricRow(label = "Water Status:", value = waterStatus)
         MetricRow(label = "Smoke Level:", value = smokeLevel)
-        MetricRow(label = "Motion Detection:", value = motionStatus)
     }
 }
 
@@ -170,24 +200,58 @@ fun MetricRow(label: String, value: String) {
     }
 }
 
-fun fetchSensorData(onDataReceived: (SensorData) -> Unit, onError: () -> Unit) {
-    CoroutineScope(Dispatchers.IO).launch {
+/**
+ * A suspend function that fetches sensor data from the server.
+ * This implementation is modeled after your old commit.
+ */
+suspend fun fetchDataFromServer(): SensorData? {
+    return withContext(Dispatchers.IO) {
+        val urlString = "https://vigilanths.pagekite.me/data"
+        val urlConnection = URL(urlString).openConnection() as HttpURLConnection
         try {
-            val data = SensorData(
-                temperature = 25.0,
-                humidity = 50.0,
-                waterLevel = 10.0,
-                smokeLevel = 5.0,
-                coLevel = 20.0,
-                motion = false
-            )
-            withContext(Dispatchers.Main) {
-                onDataReceived(data)
-            }
+            urlConnection.requestMethod = "GET"
+            urlConnection.connectTimeout = 5000
+            urlConnection.readTimeout = 5000
+            urlConnection.connect()
+
+            val result = urlConnection.inputStream.bufferedReader().use { it.readText() }
+            val jsonObject = JSONObject(result)
+
+            // Parse dht_data (expected format: "78.80 F, 37.00%")
+            val dhtData = jsonObject.optString("dht_data", "")
+            val temperatureRegex = Regex("([0-9.]+) ?F")
+            val temperatureMatch = temperatureRegex.find(dhtData)
+            val temperatureC = temperatureMatch?.groupValues?.get(1)?.toDoubleOrNull() ?: 0.0
+
+            val humidityRegex = Regex("([0-9.]+)%")
+            val humidityMatch = humidityRegex.find(dhtData)
+            val humidity = humidityMatch?.groupValues?.get(1)?.toDoubleOrNull() ?: 0.0
+
+            // Parse water_data (expected format: "94.66%")
+            val waterDataString = jsonObject.optString("water_data", "0.00%")
+            val waterLevel = waterDataString.replace("%", "").trim().toDoubleOrNull() ?: 0.0
+
+            // Parse smoke_data (expected format: "0.00 ppm")
+            val smokeData = jsonObject.optString("smoke_data", "0.00 ppm")
+            val smokeRegex = Regex("([0-9.]+) ppm")
+            val smokeMatch = smokeRegex.find(smokeData)
+            val smokeValue = smokeMatch?.groupValues?.get(1)?.toDoubleOrNull() ?: 0.0
+
+            // Parse co_data (expected format: "0.00 ppm")
+            val coDataString = jsonObject.optString("co_data", "0.00 ppm")
+            val coRegex = Regex("([0-9.]+) ppm")
+            val coMatch = coRegex.find(coDataString)
+            val coValue = coMatch?.groupValues?.get(1)?.toDoubleOrNull() ?: 0.0
+
+            println("Raw CO Data: $coDataString")   // Debug log
+            println("Parsed CO Level: $coValue")      // Debug log
+
+            SensorData(temperatureC, humidity, waterLevel, smokeValue, coValue)
         } catch (e: Exception) {
-            withContext(Dispatchers.Main) {
-                onError()
-            }
+            e.printStackTrace()
+            null
+        } finally {
+            urlConnection.disconnect()
         }
     }
 }
@@ -197,8 +261,7 @@ data class SensorData(
     val humidity: Double,
     val waterLevel: Double,
     val smokeLevel: Double,
-    val coLevel: Double,
-    val motion: Boolean
+    val coLevel: Double
 )
 
 @OptIn(UnstableApi::class)
@@ -217,7 +280,6 @@ fun VideoPlayer(streamUrl: String) {
             .build()
 
         val mediaSource = RtspMediaSource.Factory().createMediaSource(mediaItem)
-
         player.setMediaSource(mediaSource)
         player.prepare()
         player.play()

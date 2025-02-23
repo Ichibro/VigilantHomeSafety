@@ -109,9 +109,20 @@ fun MainContent(modifier: Modifier = Modifier, isPreview: Boolean = false) {
     var gasLevel by remember { mutableStateOf("No Data") }
     var waterStatus by remember { mutableStateOf("No Data") }
     var smokeLevel by remember { mutableStateOf("No Data") }
+    var motionStatus by remember { mutableStateOf("No Data") } // Optional: display motion status
 
     if (!isPreview) {
         LaunchedEffect(Unit) {
+            // Notification interval of 2 minutes in milliseconds
+            val notificationInterval = 120_000L
+
+            // Initialize last notification times for each metric
+            var lastTempNotified = 0L
+            var lastHumidityNotified = 0L
+            var lastCONotified = 0L
+            var lastSmokeNotified = 0L
+            var lastMotionNotified = 0L
+
             while (true) {
                 val data = fetchDataFromServer()
                 if (data != null) {
@@ -122,25 +133,34 @@ fun MainContent(modifier: Modifier = Modifier, isPreview: Boolean = false) {
                     gasLevel = if (data.coLevel > 50) "High" else "Safe"
                     waterStatus = if (data.waterLevel > 20) "Flood" else "Dry"
 
-                    // Check the raw sensor value for smoke, but update the UI with a string
+                    // Update smoke and motion status strings
                     val isSmokeHigh = data.smokeLevel > 10
                     smokeLevel = if (isSmokeHigh) "High" else "Low"
+                    motionStatus = if (data.motionDetected) "Detected" else "None"
 
-                    // Example notification thresholds (using raw Fahrenheit data for temperature)
-                    if (data.temperature > 90) {
+                    // Get current time
+                    val currentTime = System.currentTimeMillis()
+
+                    // Send notifications if conditions are met and enough time has elapsed
+                    if (data.temperature > 90 && (currentTime - lastTempNotified >= notificationInterval)) {
                         sendNotification(context, "High Temperature Alert!", "Temperature is ${data.temperature} F")
+                        lastTempNotified = currentTime
                     }
-                    if (data.humidity > 90) {
+                    if (data.humidity > 90 && (currentTime - lastHumidityNotified >= notificationInterval)) {
                         sendNotification(context, "High Humidity Alert!", "Humidity is ${data.humidity}%")
+                        lastHumidityNotified = currentTime
                     }
-                    if (data.coLevel > 50) {
+                    if (data.coLevel > 50 && (currentTime - lastCONotified >= notificationInterval)) {
                         sendNotification(context, "CO Gas Alert!", "CO Level is HIGH!")
+                        lastCONotified = currentTime
                     }
-                    if (data.waterLevel > 20) {
-                        sendNotification(context, "Flood Alert!", "Water level is rising!")
-                    }
-                    if (isSmokeHigh) {
+                    if (isSmokeHigh && (currentTime - lastSmokeNotified >= notificationInterval)) {
                         sendNotification(context, "Smoke Alert!", "High smoke level detected!")
+                        lastSmokeNotified = currentTime
+                    }
+                    if (data.motionDetected && (currentTime - lastMotionNotified >= notificationInterval)) {
+                        sendNotification(context, "Motion Alert!", "Motion detected!")
+                        lastMotionNotified = currentTime
                     }
                 } else {
                     Log.e("MainContent", "Failed to fetch sensor data")
@@ -149,8 +169,6 @@ fun MainContent(modifier: Modifier = Modifier, isPreview: Boolean = false) {
             }
         }
     }
-
-
 
     Column(
         modifier = modifier
@@ -184,6 +202,7 @@ fun MainContent(modifier: Modifier = Modifier, isPreview: Boolean = false) {
         MetricRow(label = "Gas Levels (CO):", value = gasLevel)
         MetricRow(label = "Water Status:", value = waterStatus)
         MetricRow(label = "Smoke Level:", value = smokeLevel)
+        MetricRow(label = "Motion:", value = motionStatus) // Optional UI display for motion
     }
 }
 
@@ -202,11 +221,10 @@ fun MetricRow(label: String, value: String) {
 
 /**
  * A suspend function that fetches sensor data from the server.
- * This implementation is modeled after your old commit.
  */
 suspend fun fetchDataFromServer(): SensorData? {
     return withContext(Dispatchers.IO) {
-        val urlString = "https://vigilanths.pagekite.me/data"
+        val urlString = "https://vhsm.pagekite.me/data"
         val urlConnection = URL(urlString).openConnection() as HttpURLConnection
         try {
             urlConnection.requestMethod = "GET"
@@ -221,7 +239,7 @@ suspend fun fetchDataFromServer(): SensorData? {
             val dhtData = jsonObject.optString("dht_data", "")
             val temperatureRegex = Regex("([0-9.]+) ?F")
             val temperatureMatch = temperatureRegex.find(dhtData)
-            val temperatureC = temperatureMatch?.groupValues?.get(1)?.toDoubleOrNull() ?: 0.0
+            val temperatureF = temperatureMatch?.groupValues?.get(1)?.toDoubleOrNull() ?: 0.0
 
             val humidityRegex = Regex("([0-9.]+)%")
             val humidityMatch = humidityRegex.find(dhtData)
@@ -243,10 +261,11 @@ suspend fun fetchDataFromServer(): SensorData? {
             val coMatch = coRegex.find(coDataString)
             val coValue = coMatch?.groupValues?.get(1)?.toDoubleOrNull() ?: 0.0
 
-            println("Raw CO Data: $coDataString")   // Debug log
-            println("Parsed CO Level: $coValue")      // Debug log
+            // Parse motion_data (expected to be "MOTION DETECTED!" when motion is detected)
+            val motionData = jsonObject.optString("motion_data", "")
+            val motionDetected = motionData.trim().equals("MOTION DETECTED!", ignoreCase = true)
 
-            SensorData(temperatureC, humidity, waterLevel, smokeValue, coValue)
+            SensorData(temperatureF, humidity, waterLevel, smokeValue, coValue, motionDetected)
         } catch (e: Exception) {
             e.printStackTrace()
             null
@@ -261,7 +280,8 @@ data class SensorData(
     val humidity: Double,
     val waterLevel: Double,
     val smokeLevel: Double,
-    val coLevel: Double
+    val coLevel: Double,
+    val motionDetected: Boolean
 )
 
 @OptIn(UnstableApi::class)
@@ -290,7 +310,9 @@ fun VideoPlayer(streamUrl: String) {
     }
 
     AndroidView(
-        modifier = Modifier.fillMaxWidth().height(200.dp),
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(200.dp),
         factory = { ctx -> PlayerView(ctx).apply { this.player = player } }
     )
 }

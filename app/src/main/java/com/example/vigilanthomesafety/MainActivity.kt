@@ -125,6 +125,7 @@ fun MainContent(modifier: Modifier = Modifier, isPreview: Boolean = false) {
             while (true) {
                 val data = fetchDataFromServer()
                 if (data != null) {
+                    // Convert Fahrenheit to Celsius for display
                     val tempCelsius = (data.temperature - 32) * 5 / 9
                     temperature = "${"%.1f".format(tempCelsius)} °C"
                     humidity = "${data.humidity}%"
@@ -145,9 +146,15 @@ fun MainContent(modifier: Modifier = Modifier, isPreview: Boolean = false) {
                     if (data.smokeLevel > 10) {
                         sendNotification(context, "Smoke Alert!", "High smoke level detected!", "smokeLevel")
                     }
+                    // New alert for flood water status
+                    if (data.waterLevel > 20) {
+                        sendNotification(context, "Flood Alert!", "Water level is high - potential flood detected!", "waterStatus")
+                    }
                     if (data.motionDetected) {
                         sendNotification(context, "Motion Alert!", "Motion detected!", "motion")
                     }
+                } else {
+                    Log.e("MainContent", "Failed to fetch sensor data")
                 }
                 delay(1000)
             }
@@ -187,7 +194,10 @@ fun VideoPlayer(streamUrl: String) {
     val player = remember { ExoPlayer.Builder(context).build() }
 
     DisposableEffect(Unit) {
-        val mediaItem = MediaItem.Builder().setUri(Uri.parse(streamUrl)).setMimeType(MimeTypes.VIDEO_H264).build()
+        val mediaItem = MediaItem.Builder()
+            .setUri(Uri.parse(streamUrl))
+            .setMimeType(MimeTypes.VIDEO_H264)
+            .build()
         val mediaSource = RtspMediaSource.Factory().createMediaSource(mediaItem)
         player.setMediaSource(mediaSource)
         player.prepare()
@@ -196,24 +206,63 @@ fun VideoPlayer(streamUrl: String) {
         onDispose { player.release() }
     }
 
-    AndroidView(modifier = Modifier.fillMaxWidth().height(200.dp), factory = { PlayerView(it).apply { this.player = player } })
+    AndroidView(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(200.dp),
+        factory = { PlayerView(it).apply { this.player = player } }
+    )
 }
+
+/**
+ * A suspend function that fetches sensor data from the server.
+ * It now uses the original JSON parsing logic, which extracts values from
+ * string data with units (e.g., "78.80 F, 37.00%") using regular expressions.
+ */
 suspend fun fetchDataFromServer(): SensorData? {
     return withContext(Dispatchers.IO) {
         val urlString = "https://vhsm.pagekite.me/data"
         val urlConnection = URL(urlString).openConnection() as HttpURLConnection
         try {
             urlConnection.requestMethod = "GET"
+            urlConnection.connectTimeout = 5000
+            urlConnection.readTimeout = 5000
+            urlConnection.connect()
+
             val result = urlConnection.inputStream.bufferedReader().use { it.readText() }
             val jsonObject = JSONObject(result)
-            val temperature = jsonObject.optDouble("temperature", 0.0)
-            val humidity = jsonObject.optDouble("humidity", 0.0)
-            val coLevel = jsonObject.optDouble("coLevel", 0.0)
-            val smokeLevel = jsonObject.optDouble("smokeLevel", 0.0)
-            val motionDetected = jsonObject.optBoolean("motionDetected", false)
-            val waterLevel = jsonObject.optDouble("waterLevel", 0.0)
 
-            SensorData(temperature, humidity, coLevel, smokeLevel, motionDetected, waterLevel)
+            // Parse dht_data (expected format: "78.80 F, 37.00%")
+            val dhtData = jsonObject.optString("dht_data", "")
+            val temperatureRegex = Regex("([0-9.]+) ?F")
+            val temperatureMatch = temperatureRegex.find(dhtData)
+            val temperatureF = temperatureMatch?.groupValues?.get(1)?.toDoubleOrNull() ?: 0.0
+
+            val humidityRegex = Regex("([0-9.]+)%")
+            val humidityMatch = humidityRegex.find(dhtData)
+            val humidity = humidityMatch?.groupValues?.get(1)?.toDoubleOrNull() ?: 0.0
+
+            // Parse water_data (expected format: "94.66%")
+            val waterDataString = jsonObject.optString("water_data", "0.00%")
+            val waterLevel = waterDataString.replace("%", "").trim().toDoubleOrNull() ?: 0.0
+
+            // Parse smoke_data (expected format: "0.00 ppm")
+            val smokeData = jsonObject.optString("smoke_data", "0.00 ppm")
+            val smokeRegex = Regex("([0-9.]+) ppm")
+            val smokeMatch = smokeRegex.find(smokeData)
+            val smokeValue = smokeMatch?.groupValues?.get(1)?.toDoubleOrNull() ?: 0.0
+
+            // Parse co_data (expected format: "0.00 ppm")
+            val coDataString = jsonObject.optString("co_data", "0.00 ppm")
+            val coRegex = Regex("([0-9.]+) ppm")
+            val coMatch = coRegex.find(coDataString)
+            val coValue = coMatch?.groupValues?.get(1)?.toDoubleOrNull() ?: 0.0
+
+            // Parse motion_data (expected to be "MOTION DETECTED!" when motion is detected)
+            val motionData = jsonObject.optString("motion_data", "")
+            val motionDetected = motionData.trim().equals("MOTION DETECTED!", ignoreCase = true)
+
+            SensorData(temperatureF, humidity, coValue, smokeValue, motionDetected, waterLevel)
         } catch (e: Exception) {
             e.printStackTrace()
             null
@@ -242,7 +291,6 @@ data class SensorData(
     val motionDetected: Boolean,
     val waterLevel: Double
 )
-
 
 @Preview(showBackground = true)
 @Composable

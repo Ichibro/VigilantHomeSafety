@@ -41,6 +41,7 @@ import org.json.JSONObject
 import java.net.HttpURLConnection
 import java.net.URL
 
+
 private const val CHANNEL_ID = "ALERT_CHANNEL"
 private const val NOTIFICATION_INTERVAL = 60_000L
 
@@ -171,6 +172,8 @@ fun MainContent(modifier: Modifier = Modifier, isPreview: Boolean = false) {
         Text(text = "Live Camera Feed", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = Color.Black)
         if (!isPreview) {
             VideoPlayer(streamUrl = "rtsp://100.68.176.2:8554/cam")
+            Spacer(modifier = Modifier.height(16.dp))
+            VideoPlayer(streamUrl = "rtsp://100.68.176.2:8554/cam") // CHANGE LINK WHEN DONE
         } else {
             Text(text = "📷 Video Preview Disabled", fontSize = 16.sp, color = Color.Gray)
         }

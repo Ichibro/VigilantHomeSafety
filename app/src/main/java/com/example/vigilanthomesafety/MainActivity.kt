@@ -168,9 +168,11 @@ fun MainContent(modifier: Modifier = Modifier, isPreview: Boolean = false) {
             .verticalScroll(rememberScrollState()),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        Text(text = "Live Camera Feed", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = Color.Black)
+
         if (!isPreview) {
-            VideoPlayer(streamUrl = "rtsp://100.68.176.2:8554/cam")
+            VideoPlayer(streamUrl = "rtsp://20.84.56.25:8554/pi0001")
+            Spacer(modifier = Modifier.height(10.dp))
+            VideoPlayer(streamUrl = "rtsp://20.84.56.25:8554/pi0002")
         } else {
             Text(text = "📷 Video Preview Disabled", fontSize = 16.sp, color = Color.Gray)
         }

@@ -78,7 +78,7 @@ fun sendNotification(context: Context, title: String, message: String, type: Str
     val sharedPreferences = context.getSharedPreferences("NotificationPrefs", Context.MODE_PRIVATE)
     val lastNotifiedTime = sharedPreferences.getLong(type, 0L)
     val currentTime = System.currentTimeMillis()
-
+//New changes
     if (currentTime - lastNotifiedTime >= NOTIFICATION_INTERVAL) {
         if (ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS)
             == PackageManager.PERMISSION_GRANTED
